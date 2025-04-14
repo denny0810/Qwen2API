@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
 from dotenv import load_dotenv
 
-from cookie_formatter import format_cookie
+from utils import format_cookie
 
 # 配置日志
 logging.basicConfig(
@@ -21,38 +21,23 @@ load_dotenv()
 # API端点配置
 TARGET_API_URL = os.getenv('TARGET_API_URL', 'https://chat.qwen.ai/api/chat/completions')
 MODELS_API_URL = os.getenv('MODELS_API_URL', 'https://chat.qwen.ai/api/models')
-COOKIE_VALUE = os.getenv('COOKIE_VALUE', '') # 默认值
+COOKIE_VALUE = os.getenv('COOKIE_VALUE', '')
 
 def handle_error(e, error_type=None):
-    """统一错误处理函数
-    
-    Args:
-        e (Exception): 异常对象
-        error_type (str, optional): 错误类型，默认为None
-    
-    Returns:
-        tuple: (错误响应字典, 状态码)
-    """
+    """统一错误处理函数"""
     if error_type is None:
-        error_type = 'API request' if isinstance(e, requests.exceptions.RequestException) else 'Internal server'
+        error_type = 'API请求' if isinstance(e, requests.exceptions.RequestException) else '服务器内部'
     
-    error_message = f'{error_type} error: {str(e)}'
+    error_message = f'{error_type}错误: {str(e)}'
     logger.error(error_message)
     return {'error': error_message}, 500
 
 def validate_request(request):
-    """验证请求数据
-    
-    Args:
-        request: Flask请求对象
-    
-    Returns:
-        tuple: (请求数据, 错误响应, 状态码, cookie值)
-    """
+    """验证请求数据"""
     # 验证API key格式
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
-        return None, {'error': 'Missing or invalid API key format'}, 401, None
+        return None, {'error': '缺少或无效的API密钥格式'}, 401, None
     
     # 获取API key并格式化cookie
     api_key = auth_header[7:]  # 去掉'Bearer '前缀
@@ -62,10 +47,10 @@ def validate_request(request):
     try:
         request_data = request.get_json()
         if not isinstance(request_data, dict):
-            return None, {'error': 'Invalid JSON format: must be an object'}, 400, None
+            return None, {'error': '无效的JSON格式：必须是一个对象'}, 400, None
         return request_data, None, None, cookie_value
     except Exception as e:
-        return None, {'error': f'Invalid JSON format: {str(e)}'}, 400, None
+        return None, {'error': f'无效的JSON格式: {str(e)}'}, 400, None
 
 @app.route('/v1/chat/completions', methods=['POST'])
 def chat_completions():
@@ -78,6 +63,29 @@ def chat_completions():
     try:
         # 检查是否为流式请求
         stream_mode = request_data.get('stream', False)
+        
+        # 处理多模态消息格式
+        if 'messages' in request_data:
+            for message in request_data['messages']:
+                if 'content' in message:
+                    # 如果content是字符串，转换为列表格式
+                    if isinstance(message['content'], str):
+                        message['content'] = [{"type": "text", "text": message['content']}]
+                    # 确保列表格式符合通义千问API要求
+                    elif isinstance(message['content'], list):
+                        formatted_content = []
+                        for item in message['content']:
+                            if item.get('type') == 'text':
+                                formatted_content.append({
+                                    'text': item.get('text', ''),
+                                    'type': 'text'
+                                })
+                            elif item.get('type') == 'image':
+                                formatted_content.append({
+                                    'image': item.get('image', ''),
+                                    'type': 'image'
+                                })
+                        message['content'] = formatted_content
         
         if stream_mode:
             # 流式请求处理
@@ -111,18 +119,7 @@ def chat_completions():
         return jsonify(error_response), status_code
 
 def make_api_request(url, method='GET', data=None, stream=False, cookie_value=None):
-    """统一的API请求处理函数
-    
-    Args:
-        url (str): 目标API的URL
-        method (str): HTTP请求方法，默认为'GET'
-        data (dict): POST请求的数据，默认为None
-        stream (bool): 是否使用流式响应，默认为False
-        cookie_value (str): 用于请求的cookie值，默认为None
-    
-    Returns:
-        tuple: (响应数据, 状态码) 或 (响应数据, 状态码, 头部信息)
-    """
+    """统一的API请求处理函数"""
     try:
         # 设置请求头
         headers = {
@@ -142,64 +139,43 @@ def make_api_request(url, method='GET', data=None, stream=False, cookie_value=No
         if data:
             kwargs['json'] = data
 
-        # 记录请求信息和实际使用的cookie值
-        logger.info(f"{method} request to {url}")
-        logger.info(f"Using cookie value: {actual_cookie}")
-        if data:
-            logger.debug(f"Request data: {json.dumps(data, ensure_ascii=False)}")
-
         # 发送请求
+        logger.info(f"{method} 请求到 {url}")
         response = requests.request(method, url, **kwargs)
+        logger.info(f"响应状态码: {response.status_code}")
 
         # 处理流式响应
         if stream and response.status_code == 200:
             return response, 200, {'Content-Type': 'text/event-stream'}
 
-        # 记录响应信息
-        logger.info(f"Response status code: {response.status_code}")
-        logger.debug(f"Response headers: {dict(response.headers)}")
-        if not stream:
-            logger.debug(f"Response content: {response.text}")
-
         # 处理非200状态码
         if response.status_code != 200:
-            return {'error': f'API request failed with status code: {response.status_code}'}, response.status_code
+            return {'error': f'API请求失败，状态码: {response.status_code}'}, response.status_code
 
         # 处理非流式响应的内容类型
         content_type = response.headers.get('Content-Type', '')
         if 'text/event-stream' in content_type and not stream:
             return response.text, response.status_code, {'Content-Type': 'text/event-stream'}
 
-        # 处理空响应
+        # 处理响应内容
         response_text = response.text.strip()
         if not response_text:
-            return {'error': 'Empty response from server'}, 500
+            return {'error': '服务器返回空响应'}, 500
 
-        # 返回JSON响应
         return json.loads(response_text), response.status_code
 
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        return handle_error(e)
     except Exception as e:
-        return handle_error(e, 'Internal server')
+        return handle_error(e)
 
 def process_stream_response(response):
-    """处理流式响应，删除重复内容
-    
-    Args:
-        response: 原始响应对象
-    
-    Yields:
-        str: 处理后的事件流数据
-    """
+    """处理流式响应，删除重复内容"""
     previous_content = ""
-    chunk_count = 0
     full_response = ""
-    logger.info("Stream response processing started")
+    chunk_count = 0  # 添加这个变量来计数处理的数据块
     
     for chunk in response.iter_lines():
         if chunk:
-            chunk_count += 1
+            chunk_count += 1  # 增加计数器
             chunk_str = chunk.decode('utf-8')
             
             # 只处理data字段的行
@@ -211,7 +187,7 @@ def process_stream_response(response):
                         # 获取当前内容
                         current_content = data_json['choices'][0].get('delta', {}).get('content', '')
                         if current_content:
-                            # 累积完整响应
+                            # 累积完整响应并处理重复内容
                             if previous_content and current_content.startswith(previous_content):
                                 new_content = current_content[len(previous_content):]
                                 full_response += new_content
@@ -219,17 +195,12 @@ def process_stream_response(response):
                             else:
                                 full_response += current_content
                             previous_content = current_content
-                            
-                            # 检查是否为最后一个消息
-                            if data_json.get('choices', [{}])[0].get('finish_reason') is not None:
-                                logger.info(f"Final response: {full_response}")
                     
                     # 重新构建事件流数据
                     processed_chunk = f"data: {json.dumps(data_json)}\n\n"
                     yield processed_chunk
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     # 如果解析失败，直接传递原始数据
-                    logger.warning(f"Failed to parse JSON: {e}")
                     yield f"{chunk_str}\n\n"
             else:
                 # 非data行直接传递
