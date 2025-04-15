@@ -31,7 +31,7 @@
 
    - 端点：`/v1/chat/completions`
    - 使用标准的OpenAI API格式
-   - 在Authorization header中使用任意token
+   - 在Authorization header中使用token
 
 示例请求：
 

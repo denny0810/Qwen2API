@@ -5,12 +5,15 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
 from dotenv import load_dotenv
 
-from utils import format_cookie
+from utils import format_cookie, upload_base64_image_to_qwenlm, get_image_id_from_upload
 
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("qwen2api.log", encoding='utf-8')
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,8 @@ def validate_request(request):
     # 验证请求数据格式
     try:
         request_data = request.get_json()
+        # 添加请求内容的调试输出
+        logger.info(f"收到请求: {json.dumps(request_data, ensure_ascii=False)}")
         if not isinstance(request_data, dict):
             return None, {'error': '无效的JSON格式：必须是一个对象'}, 400, None
         return request_data, None, None, cookie_value
@@ -80,6 +85,16 @@ def chat_completions():
                                     'text': item.get('text', ''),
                                     'type': 'text'
                                 })
+                            elif item.get('type') == 'image_url':
+                                # 提取图片
+                                image_data = item.get('image_url', '')
+                                # 如果image是对象且包含url字段，提取url值
+                                if isinstance(image_data, dict) and 'url' in image_data:
+                                    image_id=get_image_id_from_upload(upload_base64_image_to_qwenlm(image_data['url'],cookie_value))
+                                    formatted_content.append({
+                                        'image': image_id,  # 提取url字段的值
+                                        'type': 'image'
+                                    })
                             elif item.get('type') == 'image':
                                 formatted_content.append({
                                     'image': item.get('image', ''),
@@ -137,6 +152,8 @@ def make_api_request(url, method='GET', data=None, stream=False, cookie_value=No
             'stream': stream
         }
         if data:
+            # 添加请求数据的调试输出
+            logger.info(f"发送到目标API的数据: {json.dumps(data, ensure_ascii=False)}")
             kwargs['json'] = data
 
         # 发送请求
@@ -161,6 +178,14 @@ def make_api_request(url, method='GET', data=None, stream=False, cookie_value=No
         response_text = response.text.strip()
         if not response_text:
             return {'error': '服务器返回空响应'}, 500
+
+        # 添加非流式响应内容的调试输出
+        if not stream:
+            try:
+                response_json = json.loads(response_text)
+                logger.info(f"收到响应: {json.dumps(response_json, ensure_ascii=False)[:1000]}...")
+            except:
+                logger.info(f"收到非JSON响应: {response_text[:1000]}...")
 
         return json.loads(response_text), response.status_code
 
