@@ -2,13 +2,13 @@
 
 ## 介绍
 
-将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务
+将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能
 
-## 使用方法
+## 搭建方法
 
 1.克隆此项目
 
-`git clone repo-url`
+`git clone https://github.com/jyz2012/qwen2api.git`
 
 2.安装所需的库
 
@@ -18,15 +18,21 @@
 
 `python app.py`
 
+## 环境要求
+
+**python** >= **3.11**
+
+**pip** >= **25.0**
+
 ## 相关接口
 
 模型:   `localhost:5000/v1/models`
 
 聊天:   `localhost:5000/v1/chat/completions`
 
-Base Url :  `localhost:5000` (Cherry Studio etc...)
+Base Url :  `localhost:5000` (for Cherry Studio etc...)
 
-## API Key
+## API Key获取
 
 在 [Qwen Chat](https://chat.qwen.ai) 中打开开发者模式与大模型聊天，会出现一个 completion 请求，在里面的请求头里面找到 cookie 复制下来输入到 [处理工具](https://jyz2012.github.io/kukitky/) 中，复制结果就可以使用了
 

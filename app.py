@@ -247,6 +247,83 @@ def list_models():
         error_response, status_code = handle_error(e)
         return jsonify(error_response), status_code
 
+@app.route('/', methods=['GET'])
+def index():
+    """显示帮助和介绍信息的根目录端点"""
+    help_text = """
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Qwen2Api 帮助</title>
+        <style>
+            body { 
+                font-family: sans-serif; 
+                line-height: 1.6; 
+                padding: 20px; 
+                background-color: #1e1e1e; /* 暗色背景 */
+                color: #d4d4d4; /* 浅色文字 */
+            }
+            h1, h2 { 
+                color: #cccccc; /* 标题颜色 */
+                border-bottom: 1px solid #444; /* 标题下划线 */
+                padding-bottom: 5px;
+            }
+            code { 
+                background-color: #333333; /* 代码块背景 */
+                color: #d4d4d4; /* 代码块文字颜色 */
+                padding: 2px 6px; 
+                border-radius: 4px; 
+                font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            }
+            pre { 
+                background-color: #2a2a2a; /* 预格式化文本背景 */
+                padding: 15px; 
+                border-radius: 4px; 
+                overflow-x: auto; 
+                border: 1px solid #444;
+            }
+            .endpoint { 
+                margin-bottom: 15px; 
+                padding: 10px;
+                background-color: #2a2a2a;
+                border-radius: 4px;
+                border: 1px solid #444;
+            }
+            .endpoint span { 
+                font-weight: bold; 
+                margin-right: 10px; 
+                color: #9cdcfe; /* 标签颜色 */
+            }
+            a {
+                color: #569cd6; /* 链接颜色 */
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+            h3 {
+                color: #cccccc;
+                margin-top: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Qwen2Api</h1>
+        
+        <h2>API Endpoints</h2>
+        <div class="endpoint">
+            <span>Models:</span> <code>/v1/models</code> <br>
+            <span>Chat:</span> <code>/v1/chat/completions</code> <span>(for Cherry Studio etc...)</span>
+        </div>
+
+        <h3>GitHub: <a href="https://github.com/jyz2012/qwen2api" target="_blank">jyz2012/qwen2api</a></h3>
+    </body>
+    </html>
+    """
+    return Response(help_text, mimetype='text/html')
+
 if __name__ == '__main__':
     logger.info("Starting Qwen2 API server on port 5000")
     app.run(host='0.0.0.0', port=5000)
