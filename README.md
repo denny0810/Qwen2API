@@ -2,7 +2,7 @@
 
 ## 介绍
 
-将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能
+将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能。
 
 ## 搭建方法
 
@@ -38,9 +38,54 @@ Base Url :  `localhost:5000` (for Cherry Studio etc...)
 
 在 [Qwen Chat](https://chat.qwen.ai) 中打开开发者模式与大模型聊天，会出现一个 completion 请求，在里面的请求头里面找到 cookie 复制下来输入到 [处理工具](https://jyz2012.github.io/kukitky/) 中，复制结果就可以使用了
 
-## 日志
+## API使用示例
 
-本项目所有日志信息将会打印到  `qwen2api.log` 文件中，日志记录了发送到网站的请求、网站处理后发送到目标Api地址的请求内容、目标模型的响应等。日志仅用于调试代码。
+### 文本聊天
+
+```bash
+curl -X POST "http://localhost:5000/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key_here" \
+  -d '{
+    "model": "qwen-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好，请介绍一下自己"
+      }
+    ],
+    "stream": false
+  }'
+```
+
+### 图片请求
+
+```bash
+curl -X POST "http://localhost:5000/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_api_key_here" \
+  -d '{
+    "model": "qwen-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "这张图片是什么内容？"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA..."
+            }
+          }
+        ]
+      }
+    ],
+    "stream": false
+  }'
+```
 
 ## 免责申明
 
