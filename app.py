@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
 from dotenv import load_dotenv
 
-from utils import format_cookie, upload_base64_image_to_qwenlm, get_image_id_from_upload
+from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
 
 # 配置日志
 logging.basicConfig(
@@ -42,9 +42,8 @@ def validate_request(request):
     if not auth_header or not auth_header.startswith('Bearer '):
         return None, {'error': '缺少或无效的API密钥格式'}, 401, None
     
-    # 获取API key并格式化cookie
-    api_key = auth_header[7:]  # 去掉'Bearer '前缀
-    cookie_value = format_cookie(api_key)
+    # 获取API key
+    token = auth_header[7:]  # 去掉'Bearer '前缀
     
     # 验证请求数据格式
     try:
@@ -53,7 +52,7 @@ def validate_request(request):
         logger.info(f"收到请求: {json.dumps(request_data, ensure_ascii=False)}")
         if not isinstance(request_data, dict):
             return None, {'error': '无效的JSON格式：必须是一个对象'}, 400, None
-        return request_data, None, None, cookie_value
+        return request_data, None, None, token
     except Exception as e:
         return None, {'error': f'无效的JSON格式: {str(e)}'}, 400, None
 
@@ -61,7 +60,7 @@ def validate_request(request):
 def chat_completions():
     """处理聊天完成请求的端点"""
     # 验证请求
-    request_data, error_response, status_code, cookie_value = validate_request(request)
+    request_data, error_response, status_code, token_value = validate_request(request)
     if error_response:
         return jsonify(error_response), status_code
 
@@ -90,7 +89,7 @@ def chat_completions():
                                 image_data = item.get('image_url', '')
                                 # 如果image是对象且包含url字段，提取url值
                                 if isinstance(image_data, dict) and 'url' in image_data:
-                                    image_id=get_image_id_from_upload(upload_base64_image_to_qwenlm(image_data['url'],cookie_value))
+                                    image_id=get_image_id_from_upload(upload_base64_image_to_qwenlm(image_data['url'],token_value))
                                     formatted_content.append({
                                         'image': image_id,  # 提取url字段的值
                                         'type': 'image'
@@ -109,7 +108,7 @@ def chat_completions():
                 method='POST', 
                 data=request_data, 
                 stream=True,
-                cookie_value=cookie_value
+                token_value=token_value
             )
             if status != 200:
                 return jsonify(response), status
@@ -126,29 +125,30 @@ def chat_completions():
                 TARGET_API_URL, 
                 method='POST', 
                 data=request_data,
-                cookie_value=cookie_value
+                token_value=token_value
             )
             return jsonify(response), status
     except Exception as e:
         error_response, status_code = handle_error(e)
         return jsonify(error_response), status_code
 
-def make_api_request(url, method='GET', data=None, stream=False, cookie_value=None):
+def make_api_request(url, method='GET', data=None, stream=False, token_value=None):
     """统一的API请求处理函数"""
     try:
+        # 使用传入的token值或默认值
+        token = token_value
+        
         # 设置请求头
         headers = {
             'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Authorization': f'Bearer {token}',
+            'Cookie': f'{COOKIE_VALUE}'
         }
-        
-        # 使用传入的cookie值或默认值
-        actual_cookie = cookie_value if cookie_value is not None else COOKIE_VALUE
         
         # 准备请求参数
         kwargs = {
             'headers': headers,
-            'cookies': {'_auth_token': actual_cookie},
             'stream': stream
         }
         if data:

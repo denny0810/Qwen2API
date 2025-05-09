@@ -4,7 +4,7 @@
 
 将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能。
 
-## 搭建方法
+## 快速搭建
 
 1.克隆此项目
 
@@ -32,11 +32,9 @@
 
 聊天:   `localhost:5000/v1/chat/completions`
 
-Base Url :  `localhost:5000` (for Cherry Studio etc...)
+API Key获取
 
-## API Key获取
-
-在 [Qwen Chat](https://chat.qwen.ai) 中打开开发者模式与大模型聊天，会出现一个 completion 请求，在里面的请求头里面找到 cookie 复制下来输入到 [处理工具](https://jyz2012.github.io/kukitky/) 中，复制结果就可以使用了
+在 [Qwen Chat](https://chat.qwen.ai) 中打开开发者模式与大模型聊天，会出现一个 completion 请求，在请求头里找到 Authorization 复制下来去掉 Bearer 前缀就可以使用了
 
 ## API使用示例
 
@@ -47,7 +45,7 @@ curl -X POST "http://localhost:5000/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_api_key_here" \
   -d '{
-    "model": "qwen-max",
+    "model": "qwen-max-latest",
     "messages": [
       {
         "role": "user",
@@ -65,7 +63,7 @@ curl -X POST "http://localhost:5000/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_api_key_here" \
   -d '{
-    "model": "qwen-max",
+    "model": "qwen-max-latest",
     "messages": [
       {
         "role": "user",
