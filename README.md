@@ -32,7 +32,7 @@
 
 聊天:   `localhost:5000/v1/chat/completions`
 
-API Key获取
+## API Key获取
 
 在 [Qwen Chat](https://chat.qwen.ai) 中打开开发者模式与大模型聊天，会出现一个 completion 请求，在请求头里找到 Authorization 复制下来去掉 Bearer 前缀就可以使用了
 
