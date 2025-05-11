@@ -28,9 +28,9 @@
 
 ## 相关接口
 
-模型:   `localhost:5000/v1/models`
+模型:   `/v1/models`
 
-聊天:   `localhost:5000/v1/chat/completions`
+聊天:   `/v1/chat/completions`
 
 ## API Key获取
 
@@ -41,7 +41,7 @@
 ### 文本聊天
 
 ```bash
-curl -X POST "http://localhost:5000/v1/chat/completions" \
+curl -X POST "http://your_site/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_api_key_here" \
   -d '{
@@ -49,7 +49,7 @@ curl -X POST "http://localhost:5000/v1/chat/completions" \
     "messages": [
       {
         "role": "user",
-        "content": "你好，请介绍一下自己"
+        "content": "hi"
       }
     ],
     "stream": false
@@ -59,7 +59,7 @@ curl -X POST "http://localhost:5000/v1/chat/completions" \
 ### 图片请求
 
 ```bash
-curl -X POST "http://localhost:5000/v1/chat/completions" \
+curl -X POST "http://your_site/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_api_key_here" \
   -d '{
@@ -70,12 +70,12 @@ curl -X POST "http://localhost:5000/v1/chat/completions" \
         "content": [
           {
             "type": "text",
-            "text": "这张图片是什么内容？"
+            "text": "What's that?"
           },
           {
             "type": "image_url",
             "image_url": {
-              "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA..."
+              "url": "data:image/jpeg;base64,/9j/4DWwf31..."
             }
           }
         ]

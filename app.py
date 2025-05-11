@@ -1,21 +1,89 @@
 import os
 import json
 import logging
+import logging.config
+import datetime
+import threading
+import time
+import glob
 from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
 from dotenv import load_dotenv
+import yaml
 
 from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("qwen2api.log", encoding='utf-8')
-    ]
-)
+# 确保logs文件夹存在
+logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# 获取当前日期作为日志文件名
+current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+log_file = os.path.join(logs_dir, f'{current_date}.log')
+
+# 加载日志配置
+config_path = os.path.join(os.path.dirname(__file__), 'logging_config.yaml')
+with open(config_path, 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+    # 更新日志文件路径
+    for handler in config.get('handlers', {}).values():
+        if 'filename' in handler:
+            handler['filename'] = log_file
+    logging.config.dictConfig(config)
+
+# 获取日志记录器
 logger = logging.getLogger(__name__)
+
+# 日志清理函数
+def clean_old_logs():
+    """
+    定期清理旧日志文件，根据配置文件中的设置
+    """
+    # 从配置文件中读取保留策略
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    
+    # 获取日志保留策略配置
+    retention_config = config.get('log_retention', {})
+    days_to_keep = retention_config.get('days_to_keep', 30)
+    check_interval_hours = retention_config.get('check_interval_hours', 24)
+    
+    logger.info(f"启动日志清理线程，保留最近{days_to_keep}天的日志，每{check_interval_hours}小时检查一次")
+    
+    while True:
+        try:
+            # 计算截止日期
+            cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days_to_keep)
+            cutoff_str = cutoff_date.strftime('%Y-%m-%d')
+            
+            # 获取所有日志文件
+            log_files = glob.glob(os.path.join(logs_dir, '*.log'))
+            
+            # 检查并删除旧文件
+            deleted_count = 0
+            for log_file in log_files:
+                file_name = os.path.basename(log_file)
+                # 尝试从文件名中提取日期
+                try:
+                    file_date_str = file_name.split('.')[0]  # 假设文件名格式为 YYYY-MM-DD.log
+                    if file_date_str < cutoff_str:
+                        os.remove(log_file)
+                        deleted_count += 1
+                        logger.info(f"已删除旧日志文件: {file_name}")
+                except (IndexError, ValueError) as e:
+                    logger.warning(f"无法解析日志文件名: {file_name}, 错误: {str(e)}")
+            
+            if deleted_count > 0:
+                logger.info(f"日志清理完成，共删除了{deleted_count}个旧日志文件")
+            else:
+                logger.info(f"没有找到需要删除的旧日志文件")
+                
+            # 等待下一次检查
+            time.sleep(check_interval_hours * 3600)
+        except Exception as e:
+            logger.error(f"日志清理过程中发生错误: {str(e)}")
+            # 出错后等待一段时间再重试
+            time.sleep(3600)
 
 # 初始化Flask应用并加载环境变量
 app = Flask(__name__)
@@ -315,7 +383,7 @@ def index():
         <h2>API Endpoints</h2>
         <div class="endpoint">
             <span>Models:</span> <code>/v1/models</code> <br>
-            <span>Chat:</span> <code>/v1/chat/completions</code> <span>(for Cherry Studio etc...)</span>
+            <span>Chat:</span> <code>/v1/chat/completions</code>
         </div>
 
         <h3>GitHub: <a href="https://github.com/jyz2012/qwen2api" target="_blank">jyz2012/qwen2api</a></h3>
@@ -325,5 +393,10 @@ def index():
     return Response(help_text, mimetype='text/html')
 
 if __name__ == '__main__':
-    logger.info("Starting Qwen2 API server on port 5000")
-    app.run(host='0.0.0.0', port=5000)
+    # 启动日志清理线程
+    log_cleaner = threading.Thread(target=clean_old_logs, daemon=True)
+    log_cleaner.start()
+    logger.info("已启动日志清理线程")
+    
+    logger.info("正在 6060 端口启动服务...")
+    app.run(host='0.0.0.0', port=6060)

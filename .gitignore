@@ -4,4 +4,4 @@ __pycache__/
 
 .env
 
-qwen2api.log
+logs/
