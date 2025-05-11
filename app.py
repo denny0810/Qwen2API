@@ -8,7 +8,6 @@ import time
 import glob
 from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
-from dotenv import load_dotenv
 import yaml
 
 from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
@@ -85,14 +84,13 @@ def clean_old_logs():
             # 出错后等待一段时间再重试
             time.sleep(3600)
 
-# 初始化Flask应用并加载环境变量
+# 初始化Flask应用
 app = Flask(__name__)
-load_dotenv()
 
-# API端点配置
-TARGET_API_URL = os.getenv('TARGET_API_URL', 'https://chat.qwen.ai/api/chat/completions')
-MODELS_API_URL = os.getenv('MODELS_API_URL', 'https://chat.qwen.ai/api/models')
-COOKIE_VALUE = os.getenv('COOKIE_VALUE', '')
+# 设置API端点配置
+TARGET_API_URL = 'https://chat.qwen.ai/api/chat/completions'
+MODELS_API_URL = 'https://chat.qwen.ai/api/models'
+COOKIE_VALUE = 'ssxmod_itna=YqjxyiDQDtKQu4iqYQiQGCDce=SqAjeDXDUMqiQGgDYq7=GFKDCOtkajRYSB3odE4hYd02D5D/fmreDZDG9dDqx0orXKt3Axsa0mCiv3BCeou2PHQClrpctWvB7l3m=w9GY5+DCPGnDBIqqGqx+DiiTx0rD0eDPxDYDG+hDneDexDdNFEpN4GWTjR5Dl9sr4DaW4i3NIYDR=xD0gWsDQF3bIDDBpiXDrDej8OsU/r6DivqF9cwD7H3DlaKiv0w2KZnoAEp3ypf5pBAw40OD095N4ibVaLQbREf+Qie5=XYwQDrqCmqX=0KrYxZYNtiGAEQaDsOYqdYqeA4AEi+odyTeDDf+YIUY4+ehGY+0rUuEt9oqt+qBY5at4VED59GdY+YGR1nxUCxoQuQChdYeqlXxpDxD;'
 
 def handle_error(e, error_type=None):
     """统一错误处理函数"""
