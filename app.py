@@ -9,6 +9,7 @@ import glob
 from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
 import yaml
+import random
 
 from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
 
@@ -90,7 +91,8 @@ app = Flask(__name__)
 # 设置API端点配置
 TARGET_API_URL = 'https://chat.qwen.ai/api/chat/completions'
 MODELS_API_URL = 'https://chat.qwen.ai/api/models'
-COOKIE_VALUE = 'ssxmod_itna=YqjxyiDQDtKQu4iqYQiQGCDce=SqAjeDXDUMqiQGgDYq7=GFKDCOtkajRYSB3odE4hYd02D5D/fmreDZDG9dDqx0orXKt3Axsa0mCiv3BCeou2PHQClrpctWvB7l3m=w9GY5+DCPGnDBIqqGqx+DiiTx0rD0eDPxDYDG+hDneDexDdNFEpN4GWTjR5Dl9sr4DaW4i3NIYDR=xD0gWsDQF3bIDDBpiXDrDej8OsU/r6DivqF9cwD7H3DlaKiv0w2KZnoAEp3ypf5pBAw40OD095N4ibVaLQbREf+Qie5=XYwQDrqCmqX=0KrYxZYNtiGAEQaDsOYqdYqeA4AEi+odyTeDDf+YIUY4+ehGY+0rUuEt9oqt+qBY5at4VED59GdY+YGR1nxUCxoQuQChdYeqlXxpDxD;'
+# COOKIE_VALUE = 'ssxmod_itna=YqjxyiDQDtKQu4iqYQiQGCDce=SqAjeDXDUMqiQGgDYq7=GFKDCOtkajRYSB3odE4hYd02D5D/fmreDZDG9dDqx0orXKt3Axsa0mCiv3BCeou2PHQClrpctWvB7l3m=w9GY5+DCPGnDBIqqGqx+DiiTx0rD0eDPxDYDG+hDneDexDdNFEpN4GWTjR5Dl9sr4DaW4i3NIYDR=xD0gWsDQF3bIDDBpiXDrDej8OsU/r6DivqF9cwD7H3DlaKiv0w2KZnoAEp3ypf5pBAw40OD095N4ibVaLQbREf+Qie5=XYwQDrqCmqX=0KrYxZYNtiGAEQaDsOYqdYqeA4AEi+odyTeDDf+YIUY4+ehGY+0rUuEt9oqt+qBY5at4VED59GdY+YGR1nxUCxoQuQChdYeqlXxpDxD;'
+COOKIE_VALUE = 'ssxmod_itna=iq+O7IefxUgG0YGCD9D0gx3qi9BZjDl4BUQD2DIkq7=GFDmx0POp6i4IxKD7WmKfA7yLiX01qDseWe4GzDidWLxF91w4NPeIAlPqoeU=70tmb9aFhpHYOBDOgRKYkKZ6iDU4i8DCMD2x4xGGD0oDt4DIDAYDDxDWQeGy+eGuDG6QDGPKx03DfuRazGNKoYIq+Ov5x7frnqDuDGUasSh=RDDg7eD+RDDMnqG2RGaN=EECweGWzC5D0q=nD7A19arpazuFh198Xay=0aNsuaOmmjbQOeGmBdB7zeZduig+KDEH4nfHerxptGDFB5MBDWYi57D82GMG5QAYQG4bDQlk5bYeFoQh23DDfkjwQKKrWD3e4gEU9ZUiY44ixBBRBe+q0GHihzChXeuQIwjWxfAqLBwztTPim1YD;'
 
 def handle_error(e, error_type=None):
     """统一错误处理函数"""
@@ -103,13 +105,32 @@ def handle_error(e, error_type=None):
 
 def validate_request(request):
     """验证请求数据"""
+    # 创建容器变量
+    CHAT_AUTHORIZATION = os.environ.get('CHAT_AUTHORIZATION')
+    print(f"[DEBUG]CHAT_AUTHORIZATION: {CHAT_AUTHORIZATION}")
     # 验证API key格式
     auth_header = request.headers.get('Authorization')
+    print(f"[DEBUG]Authorization Header: {auth_header}")
     if not auth_header or not auth_header.startswith('Bearer '):
         return None, {'error': '缺少或无效的API密钥格式'}, 401, None
     
     # 获取API key
-    token = auth_header[7:]  # 去掉'Bearer '前缀
+    tokens = auth_header[7:]  # 去掉'Bearer '前缀
+    if len(tokens) < 30:
+        tokens = CHAT_AUTHORIZATION
+    print(f"[DEBUG]Tokens: {tokens}")    
+    # 如果 tokens 仍然无效，返回错误
+    if not tokens:
+        return None, {'error': 'API密钥无效或环境变量未设置'}, 401, None
+    try:
+        # 分割密钥字符串并随机选择一个元素
+        token_list = tokens.split(',')
+        print(f"[DEBUG]Token List: {token_list}")
+        token = random.choice(token_list)
+        print(f"[DEBUG]Token: {token}")
+    except ValueError:
+        # 处理无法分割或列表为空的情况
+        return None, {'error': 'API密钥格式错误,无法分割'}, 401, None
     
     # 验证请求数据格式
     try:
@@ -117,7 +138,7 @@ def validate_request(request):
         # 添加请求内容的调试输出
         logger.info(f"收到请求: {json.dumps(request_data, ensure_ascii=False)}")
         if not isinstance(request_data, dict):
-            return None, {'error': '无效的JSON格式：必须是一个对象'}, 400, None
+            return None, {'error': '无效的JSON格式:必须是一个对象'}, 400, None
         return request_data, None, None, token
     except Exception as e:
         return None, {'error': f'无效的JSON格式: {str(e)}'}, 400, None
