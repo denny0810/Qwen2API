@@ -84,7 +84,24 @@ curl -X POST "http://your_site/v1/chat/completions" \
     "stream": false
   }'
 ```
-
+## docker 部署
+docker compose example
+```
+services:
+  qwen2api:
+    container_name: qwen2api
+    image: <your hub repository>/qwen2api:latest
+    restart: always
+    network_mode: bridge
+    ports:
+      - 6060:6060
+    environment:
+      - TZ=Asia/Shanghai
+      - CHAT_AUTHORIZATION=<your token>
+    volumes:
+      - <your log file location>:/app/logs
+```
+    
 ## 免责申明
 
 + 本项目仅用作学习技术，请勿滥用，不要通过此工具做任何违法乱纪或有损国家利益之事
