@@ -97,4 +97,3 @@ if __name__ == "__main__":
         print("Image ID:", data_id)
     except Exception as e:
         print("Error:", str(e))
-        

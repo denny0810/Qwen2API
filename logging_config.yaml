@@ -32,4 +32,3 @@ loggers:
     handlers: [file, console]
     level: INFO
     propagate: true
-    

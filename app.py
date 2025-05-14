@@ -90,6 +90,7 @@ app = Flask(__name__)
 # 设置API端点配置
 TARGET_API_URL = 'https://chat.qwen.ai/api/chat/completions'
 MODELS_API_URL = 'https://chat.qwen.ai/api/models'
+COOKIE_VALUE = 'ssxmod_itna=YqjxyiDQDtKQu4iqYQiQGCDce=SqAjeDXDUMqiQGgDYq7=GFKDCOtkajRYSB3odE4hYd02D5D/fmreDZDG9dDqx0orXKt3Axsa0mCiv3BCeou2PHQClrpctWvB7l3m=w9GY5+DCPGnDBIqqGqx+DiiTx0rD0eDPxDYDG+hDneDexDdNFEpN4GWTjR5Dl9sr4DaW4i3NIYDR=xD0gWsDQF3bIDDBpiXDrDej8OsU/r6DivqF9cwD7H3DlaKiv0w2KZnoAEp3ypf5pBAw40OD095N4ibVaLQbREf+Qie5=XYwQDrqCmqX=0KrYxZYNtiGAEQaDsOYqdYqeA4AEi+odyTeDDf+YIUY4+ehGY+0rUuEt9oqt+qBY5at4VED59GdY+YGR1nxUCxoQuQChdYeqlXxpDxD;'
 
 def handle_error(e, error_type=None):
     """统一错误处理函数"""
@@ -207,8 +208,8 @@ def make_api_request(url, method='GET', data=None, stream=False, token_value=Non
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            # 'Authorization': f'Bearer {token}',
-            'Cookie': f'{token}'
+            'Authorization': f'Bearer {token}',
+            'Cookie': f'{COOKIE_VALUE}'
         }
         
         # 准备请求参数
@@ -321,7 +322,7 @@ def index():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Qwen2Api</title>
+        <title>Qwen2Api 帮助</title>
         <style>
             body { 
                 font-family: sans-serif; 

@@ -1,7 +1,5 @@
 # Qwen2Api
 
-### 阿里好像更新了验证码机制，现已不能使用！
-
 ## 介绍
 
 将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能。
