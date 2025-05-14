@@ -9,6 +9,7 @@ import glob
 from flask import Flask, request, jsonify, Response, stream_with_context
 import requests
 import yaml
+import random
 
 from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
 
@@ -103,13 +104,32 @@ def handle_error(e, error_type=None):
 
 def validate_request(request):
     """验证请求数据"""
+    # 创建容器变量
+    CHAT_AUTHORIZATION = os.environ.get('CHAT_AUTHORIZATION')
+    print(f"[DEBUG]CHAT_AUTHORIZATION: {CHAT_AUTHORIZATION}")
     # 验证API key格式
     auth_header = request.headers.get('Authorization')
+    print(f"[DEBUG]Authorization Header: {auth_header}")
     if not auth_header or not auth_header.startswith('Bearer '):
         return None, {'error': '缺少或无效的API密钥格式'}, 401, None
     
     # 获取API key
-    token = auth_header[7:]  # 去掉'Bearer '前缀
+    tokens = auth_header[7:]  # 去掉'Bearer '前缀
+    if len(tokens) < 30:
+        tokens = CHAT_AUTHORIZATION
+    print(f"[DEBUG]Tokens: {tokens}")    
+    # 如果 tokens 仍然无效，返回错误
+    if not tokens:
+        return None, {'error': 'API密钥无效或环境变量未设置'}, 401, None
+    try:
+        # 分割密钥字符串并随机选择一个元素
+        token_list = tokens.split(',')
+        print(f"[DEBUG]Token List: {token_list}")
+        token = random.choice(token_list)
+        print(f"[DEBUG]Token: {token}")
+    except ValueError:
+        # 处理无法分割或列表为空的情况
+        return None, {'error': 'API密钥格式错误,无法分割'}, 401, None
     
     # 验证请求数据格式
     try:
@@ -117,7 +137,7 @@ def validate_request(request):
         # 添加请求内容的调试输出
         logger.info(f"收到请求: {json.dumps(request_data, ensure_ascii=False)}")
         if not isinstance(request_data, dict):
-            return None, {'error': '无效的JSON格式：必须是一个对象'}, 400, None
+            return None, {'error': '无效的JSON格式:必须是一个对象'}, 400, None
         return request_data, None, None, token
     except Exception as e:
         return None, {'error': f'无效的JSON格式: {str(e)}'}, 400, None
