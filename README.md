@@ -1,92 +1,103 @@
 # Qwen2Api
 
-## 介绍
+将 [Qwen Chat](https://chat.qwen.ai/) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能。
 
-将 [Qwen Chat](https://chat.qwen.ai) 转换为 Openai 格式的 api 服务，现已支持图片上传等功能。
+## 项目结构
+
+采用模块化设计，结构如下：
+
+```
+qwen2api/
+├── api/                  # API路由模块
+│   ├── __init__.py
+│   └── routes.py         # 路由处理逻辑
+├── logger/               # 日志处理模块
+│   └── __init__.py       # 日志配置和清理功能
+├── logs/                 # 日志文件目录
+├── app.py               # 主应用入口
+├── config.py            # 配置管理
+├── utils.py             # 工具函数
+├── logging_config.yaml  # 日志配置文件
+├── requirements.txt     # 依赖项
+├── Dockerfile           # Docker配置
+└── README.md            # 项目文档
+```
 
 ## 快速搭建
 
-1.克隆此项目
+1. 克隆此项目
 
-`git clone https://github.com/jyz2012/qwen2api.git`
+```bash
+git clone https://github.com/jyz2012/qwen2api.git
+```
 
-2.安装所需的库
+2. 安装所需的库
 
-`pip install -r requirements.txt`
+```bash
+pip install -r requirements.txt
+```
 
-3.运行主程序
+3. 运行主程序
 
-`python app.py`
+```bash
+python app.py
+```
 
 **注意**：**这是一个开发服务器。请勿在生产部署中使用它。如果需要，请使用 WSGI 服务器。**
 
-## 环境要求
+## 环境变量
 
-**python** >= **3.11**
+- `CHAT_AUTHORIZATION`: 通义千问API的授权令牌，可以设置多个令牌，用逗号分隔
 
-**pip** >= **25.0**
+## API端点
 
-## 相关接口
+### 1. 聊天完成
 
-模型:   `/v1/models`
-
-聊天:   `/v1/chat/completions`
-
-## API Key获取
-
-在 [Qwen Chat](https://chat.qwen.ai) 中打开开发者模式与大模型聊天，会出现一个 completion 请求，在请求头里找到 Authorization 复制下来去掉 Bearer 前缀就可以使用了
-
-## API使用示例
-
-### 文本聊天
-
-```bash
-curl -X POST "http://your_site/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your_api_key_here" \
-  -d '{
-    "model": "qwen-max-latest",
-    "messages": [
-      {
-        "role": "user",
-        "content": "hi"
-      }
-    ],
-    "stream": false
-  }'
+```
+POST /v1/chat/completions
 ```
 
-### 图片请求
+请求示例：
 
-```bash
-curl -X POST "http://your_site/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your_api_key_here" \
-  -d '{
-    "model": "qwen-max-latest",
-    "messages": [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "What's that?"
-          },
-          {
-            "type": "image_url",
-            "image_url": {
-              "url": "data:image/jpeg;base64,/9j/4DWwf31..."
-            }
-          }
-        ]
-      }
-    ],
-    "stream": false
-  }'
+```json
+{
+  "model": "qwen-max",
+  "messages": [
+    {"role": "user", "content": "你好"}
+  ]
+}
 ```
-## docker 部署
-docker compose example
+
+### 2. 获取模型列表
+
 ```
+GET /v1/models
+```
+
+## 多模态支持
+
+支持发送图片和文本的多模态请求，示例：
+
+```json
+{
+  "model": "qwen-max",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "这张图片是什么?"},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}}
+      ]
+    }
+  ]
+}
+```
+
+## Docker 部署
+
+### Docker Compose 示例
+
+```yaml
 services:
   qwen2api:
     container_name: qwen2api
@@ -101,8 +112,16 @@ services:
     volumes:
       - <your log file location>:/app/logs
 ```
-    
-## 免责申明
 
-+ 本项目仅用作学习技术，请勿滥用，不要通过此工具做任何违法乱纪或有损国家利益之事
-+ 禁止使用该项目进行任何盈利活动，对一切非法使用所产生的后果，本人概不负责
+## 项目特点
+
+- 模块化设计，代码结构清晰
+- 支持流式输出
+- 支持多模态输入（文本和图像）
+- 完善的日志记录和错误处理
+- 自动清理旧日志文件
+- Docker支持，便于部署
+
+## 许可证
+
+本项目使用 GPL v3 许可证。详情请参阅 [LICENSE](./License) 文件。

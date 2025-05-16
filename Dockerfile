@@ -9,16 +9,21 @@ ENV PYTHONUNBUFFERED 1
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends gcc
+RUN apt-get update && apt-get install -y --no-install-recommends gcc \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 # Copy project
 COPY . .
 
-# Expose the port the app runs on (update 6060 if your app uses different port)
+# Expose the port the app runs on
 EXPOSE 6060
 
 # Command to run the application
