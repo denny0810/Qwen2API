@@ -31,6 +31,10 @@ def validate_request(request, get_auth_token):
     
     # 验证请求数据格式
     try:
+        # raw_data = request.get_data(as_text=True)  # 获取原始请求体作为字符串
+        # 打印原始数据用于调试
+        # logger.info(f"原始请求内容: {raw_data}")
+        # request_data=json.loads(raw_data)
         request_data = request.get_json()
         # 添加请求内容的调试输出
         logger.info(f"收到请求: {json.dumps(request_data, ensure_ascii=False)}")
@@ -41,35 +45,40 @@ def validate_request(request, get_auth_token):
         return None, {'error': f'无效的JSON格式: {str(e)}'}, 400, None
 
 
-def make_api_request(url, method='GET', data=None, stream=False, token_value=None):
+# def make_api_request(url, method='GET', data=None,token_value=None):
+def make_api_request(url, method, data,token_value):
     """统一的API请求处理函数"""
     try:
         # 使用传入的token值或默认值
-        token = token_value
+        # token = token_value
         
         # 设置请求头
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Authorization': f'Bearer {token}',
+            'Authorization': f'Bearer {token_value}',
             'Cookie': f'{COOKIE_VALUE}'
         }
         
         # 准备请求参数
         kwargs = {
             'headers': headers,
-            'stream': stream
+            'stream': data['stream']
         }
+        
         if data:
+            kwargs['json'] = data
+            stream=data['stream']
             # 添加请求数据的调试输出
             logger.info(f"发送到目标API的数据: {json.dumps(data, ensure_ascii=False)}")
-            kwargs['json'] = data
-
+        else:
+            stream=False # 默认非流式响应        
+ 
         # 发送请求
         logger.info(f"{method} 请求到 {url}")
         response = requests.request(method, url, **kwargs)
-        logger.info(f"响应状态码: {response.status_code}")
-
+        logger.info(f"响应状态码: {response.status_code}")        
+        logger.info(f"流式响应: {stream}")
         # 处理流式响应
         if stream and response.status_code == 200:
             return response, 200, {'Content-Type': 'text/event-stream'}
@@ -151,14 +160,34 @@ def process_stream_response(response):
 
 def chat_completions_route(get_auth_token):
     """处理聊天完成请求的端点"""
+    
+    # 跳过 OPTIONS 请求的处理
+    if request.method == 'OPTIONS':
+        return '', 200
+    
     # 验证请求
     request_data, error_response, status_code, token_value = validate_request(request, get_auth_token)
     if error_response:
         return jsonify(error_response), status_code
 
     try:
-        # 检查是否为流式请求
-        stream_mode = request_data.get('stream', False)
+        # 检查并格式化stream参数，默认值False
+        if 'stream' not in request_data:
+            request_data['stream'] = False
+            logger.info("请求中未包含stream参数，已设置为默认值False")
+        elif isinstance(request_data['stream'], bool):
+            request_data['stream'] = request_data['stream']
+        elif isinstance(request_data['stream'], str):
+            if str(request_data['stream']).lower() == 'true':
+                request_data['stream'] = True
+            else:
+                request_data['stream'] = False
+                logger.info(f"字符串stream参数值: {request_data['stream']}, 已转换为False")
+        else:
+            request_data['stream'] = False
+            logger.warning(f"不支持的stream参数类型: {type(request_data['stream'])}, 已设置为False")
+ 
+        # stream_mode = request_data['stream']
         
         # 处理多模态消息格式
         if 'messages' in request_data:
@@ -193,13 +222,12 @@ def chat_completions_route(get_auth_token):
                                 })
                         message['content'] = formatted_content
         
-        if stream_mode:
+        if request_data['stream']:
             # 流式请求处理
             response, status, headers = make_api_request(
                 TARGET_API_URL, 
                 method='POST', 
                 data=request_data, 
-                stream=True,
                 token_value=token_value
             )
             if status != 200:
@@ -228,7 +256,12 @@ def chat_completions_route(get_auth_token):
 def models_route():
     """获取可用模型列表的端点"""
     try:
-        response, status = make_api_request(MODELS_API_URL)
+        response, status = make_api_request(
+            MODELS_API_URL,
+            method='GET',
+            data=None,
+            token_value=None
+        )
         return jsonify(response), status
     except Exception as e:
         error_response, status_code = handle_error(e)

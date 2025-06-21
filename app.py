@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 import logging
 
 from config import HOST, PORT, get_auth_token
@@ -10,9 +11,9 @@ logger = setup_logging()
 
 # 初始化Flask应用
 app = Flask(__name__)
-
+CORS(app)  # 允许所有来源的跨域请求
 # 注册路由
-@app.route('/v1/chat/completions', methods=['POST'])
+@app.route('/v1/chat/completions', methods=['POST','OPTIONS'])
 def chat_completions():
     return chat_completions_route(get_auth_token)
 
