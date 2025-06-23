@@ -69,6 +69,7 @@ def make_api_request(url, method='GET', data=None, stream=False, token_value=Non
         logger.info(f"{method} 请求到 {url}")
         response = requests.request(method, url, **kwargs)
         logger.info(f"响应状态码: {response.status_code}")
+        logger.info(f"流式响应: {stream}")
 
         # 处理流式响应
         if stream and response.status_code == 200:
@@ -151,6 +152,10 @@ def process_stream_response(response):
 
 def chat_completions_route(get_auth_token):
     """处理聊天完成请求的端点"""
+    # 跳过 OPTIONS 请求的处理
+    if request.method == 'OPTIONS':
+        return '', 200
+    
     # 验证请求
     request_data, error_response, status_code, token_value = validate_request(request, get_auth_token)
     if error_response:

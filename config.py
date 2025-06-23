@@ -1,6 +1,10 @@
 import os
 import random
 
+# 从当前目录下的 token 文件加载环境变量
+from dotenv import load_dotenv
+load_dotenv(dotenv_path='token.env')
+
 # API配置
 TARGET_API_URL = 'https://chat.qwen.ai/api/chat/completions'
 MODELS_API_URL = 'https://chat.qwen.ai/api/models'
@@ -15,28 +19,35 @@ HOST = '0.0.0.0'
 PORT = 6060
 
 # 获取认证令牌
+
 def get_auth_token(auth_header):
     """从请求头或环境变量中获取认证令牌"""
     CHAT_AUTHORIZATION = os.environ.get('CHAT_AUTHORIZATION')
-    
-    # 验证API key格式
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return None, '缺少或无效的API密钥格式', 401
-    
-    # 获取API key
-    tokens = auth_header[7:]  # 去掉'Bearer '前缀
-    if len(tokens) < 30:
-        tokens = CHAT_AUTHORIZATION
-    
-    # 如果 tokens 仍然无效，返回错误
-    if not tokens:
-        return None, 'API密钥无效或环境变量未设置', 401
-    
-    try:
-        # 分割密钥字符串并随机选择一个元素
-        token_list = tokens.split(',')
-        token = random.choice(token_list)
-        return token, None, None
-    except ValueError:
-        # 处理无法分割或列表为空的情况
-        return None, 'API密钥格式错误,无法分割', 401
+    token_list=[]
+    # 优先尝试从请求头获取 token
+    if auth_header and isinstance(auth_header, str) and auth_header.startswith('Bearer '):
+        tokens = auth_header[7:].strip()  # 去掉 'Bearer ' 前缀并去除空格
+    else:
+         return None, '未找到有效的Authorization 请求头', 401
+    if len(tokens) > 30:             # 简单校验 token 长度是否合理
+            token_list = tokens.split(',')
+    elif CHAT_AUTHORIZATION and isinstance(CHAT_AUTHORIZATION, str):
+            token_list = CHAT_AUTHORIZATION.split(',')
+    token_list = [t for t in token_list if t.strip()] #过滤无效空格
+    if token_list:
+        token = get_token_cached_random(token_list)
+        return token, None, None        
+    else:
+        return None, '未找到有效token，请检查请求头的token或 CHAT_AUTHORIZATION 环境变量', 401
+
+last_token = None  # 全局变量，记录上一次选择的 Token
+
+# 缓存随机生成
+def get_token_cached_random(token_list):
+    global last_token
+    # 排除上一次使用的 Token（除非只剩它一个）
+    available_tokens = [t for t in token_list if t != last_token] or token_list
+    # 从剩余 Token 中随机选择一个
+    token = random.choice(available_tokens)
+    last_token = token  # 更新缓存
+    return token
