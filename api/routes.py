@@ -62,6 +62,7 @@ def make_api_request(url, method='GET', data=None, stream=False, token_value=Non
         }
         if data:
             # 添加请求数据的调试输出
+            logger.info(f"发送到目标API的token: {token}")
             logger.info(f"发送到目标API的数据: {json.dumps(data, ensure_ascii=False)}")
             kwargs['json'] = data
 

@@ -1,16 +1,17 @@
 import os
 import random
 
-# 从当前目录下的 token 文件加载环境变量
+# 从当前目录下的 qwen2api.env 文件加载环境变量
 from dotenv import load_dotenv
-load_dotenv(dotenv_path='token.env')
+load_dotenv(dotenv_path='qwen2api.env')
 
 # API配置
 TARGET_API_URL = 'https://chat.qwen.ai/api/chat/completions'
 MODELS_API_URL = 'https://chat.qwen.ai/api/models'
-COOKIE_VALUE = 'ssxmod_itna=YqjxyiDQDtKQu4iqYQiQGCDce=SqAjeDXDUMqiQGgDYq7=GFKDCOtkajRYSB3odE4hYd02D5D/fmreDZDG9dDqx0orXKt3Axsa0mCiv3BCeou2PHQClrpctWvB7l3m=w9GY5+DCPGnDBIqqGqx+DiiTx0rD0eDPxDYDG+hDneDexDdNFEpN4GWTjR5Dl9sr4DaW4i3NIYDR=xD0gWsDQF3bIDDBpiXDrDej8OsU/r6DivqF9cwD7H3DlaKiv0w2KZnoAEp3ypf5pBAw40OD095N4ibVaLQbREf+Qie5=XYwQDrqCmqX=0KrYxZYNtiGAEQaDsOYqdYqeA4AEi+odyTeDDf+YIUY4+ehGY+0rUuEt9oqt+qBY5at4VED59GdY+YGR1nxUCxoQuQChdYeqlXxpDxD;'
-
+DEFAULT_COOKIE_VALUE = 'ssxmod_itna=YqjxyiDQDtKQu4iqYQiQGCDce=SqAjeDXDUMqiQGgDYq7=GFKDCOtkajRYSB3odE4hYd02D5D/fmreDZDG9dDqx0orXKt3Axsa0mCiv3BCeou2PHQClrpctWvB7l3m=w9GY5+DCPGnDBIqqGqx+DiiTx0rD0eDPxDYDG+hDneDexDdNFEpN4GWTjR5Dl9sr4DaW4i3NIYDR=xD0gWsDQF3bIDDBpiXDrDej8OsU/r6DivqF9cwD7H3DlaKiv0w2KZnoAEp3ypf5pBAw40OD095N4ibVaLQbREf+Qie5=XYwQDrqCmqX=0KrYxZYNtiGAEQaDsOYqdYqeA4AEi+odyTeDDf+YIUY4+ehGY+0rUuEt9oqt+qBY5at4VED59GdY+YGR1nxUCxoQuQChdYeqlXxpDxD;'
+COOKIE_VALUE = os.environ.get('COOKIE_VALUE',DEFAULT_COOKIE_VALUE)
 # 日志配置
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'ERROR').upper()
 LOGS_DIR = os.path.join(os.path.dirname(__file__), 'logs')
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'logging_config.yaml')
 

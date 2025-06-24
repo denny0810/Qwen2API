@@ -7,7 +7,7 @@ import time
 import glob
 import yaml
 
-from config import LOGS_DIR, CONFIG_PATH
+from config import LOGS_DIR, CONFIG_PATH, LOG_LEVEL
 
 # 确保logs文件夹存在
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -29,6 +29,15 @@ def setup_logging():
         for handler in config.get('handlers', {}).values():
             if 'filename' in handler:
                 handler['filename'] = log_file
+        
+        # 根据环境变量设置日志级别
+        if LOG_LEVEL == 'NONE':
+            logging.disable(logging.CRITICAL + 1)  # 关闭日志记录
+        else:
+            config['loggers']['']['level'] = LOG_LEVEL
+            for handler in config.get('handlers', {}).values():
+                handler['level'] = LOG_LEVEL
+        
         logging.config.dictConfig(config)
     
     # 获取日志记录器
