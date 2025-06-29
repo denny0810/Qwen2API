@@ -2,7 +2,7 @@ from flask import Flask
 from flask_cors import CORS
 import logging
 
-from config import HOST, PORT, get_auth_token
+from config import HOST, PORT, get_auth_token, FORCE_NO_STREAM
 from api.routes import chat_completions_route, models_route, index_route
 from logger import setup_logging, start_log_cleaner
 
@@ -33,5 +33,8 @@ if __name__ == '__main__':
     log_cleaner = start_log_cleaner()
     logger.info("已启动日志清理线程")
     
-    logger.info(f"正在 {PORT} 端口启动服务...")
+    logger.info("正在 %s 端口启动服务...", PORT)
+    if FORCE_NO_STREAM:
+        logger.warning("=====忽略客户端请求格式，向服务器强制请求非流式响应====")
+    
     app.run(host=HOST, port=PORT)

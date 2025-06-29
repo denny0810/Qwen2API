@@ -46,8 +46,13 @@ python app.py
 **注意**：**这是一个开发服务器。请勿在生产部署中使用它。如果需要，请使用 WSGI 服务器。**
 
 ## 环境变量
-
-- `CHAT_AUTHORIZATION`: 通义千问API的授权令牌，可以设置多个令牌，用逗号分隔
+环境变量保存在qwen2api.env文件
+| 变量                 | 说明                                         |
+| ------------------ | ------------------------------------------ |
+| CHAT_AUTHORIZATION | token，多个token用逗号隔开。程序优先选用客户端输入的token|
+| LOG_LEVEL          | 日志记录等级，支持debug，info，warning， error。默认error |
+| FORCE_NO_STREAM    | 强制向服务器请求非流式响应，默认false，与客户端请求一致|
+| COOKIE_VALUE       | 发送请求时附带的cookie值，默认不用设置。 |
 
 ## API端点
 
@@ -101,16 +106,16 @@ GET /v1/models
 services:
   qwen2api:
     container_name: qwen2api
-    image: <your hub repository>/qwen2api:latest
+    image: <pull address>
     restart: always
     network_mode: bridge
     ports:
       - 6060:6060
     environment:
       - TZ=Asia/Shanghai
-      - CHAT_AUTHORIZATION=<your token>
     volumes:
-      - <your log file location>:/app/logs
+      - ./qwen2api/logs:/app/logs
+      - ./qwen2api/qwen2api.env:/app/qwen2api.env
 ```
 
 ## 项目特点

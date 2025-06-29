@@ -4,8 +4,7 @@ import logging
 import requests
 
 from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
-from config import TARGET_API_URL, MODELS_API_URL, COOKIE_VALUE
-
+from config import TARGET_API_URL, MODELS_API_URL, COOKIE_VALUE, FORCE_NO_STREAM
 # 获取日志记录器
 logger = logging.getLogger(__name__)
 
@@ -19,94 +18,168 @@ def handle_error(e, error_type=None):
     logger.error(error_message)
     return {'error': error_message}, 500
 
-
-def validate_request(request, get_auth_token):
-    """验证请求数据"""
-    # 验证API key
-    auth_header = request.headers.get('Authorization')
-    token, error_message, status_code = get_auth_token(auth_header)
-    
-    if error_message:
-        return None, {'error': error_message}, status_code, None
-    
-    # 验证请求数据格式
-    try:
-        request_data = request.get_json()
-        # 添加请求内容的调试输出
-        logger.info(f"收到请求: {json.dumps(request_data, ensure_ascii=False)}")
-        if not isinstance(request_data, dict):
-            return None, {'error': '无效的JSON格式:必须是一个对象'}, 400, None
-        return request_data, None, None, token
-    except Exception as e:
-        return None, {'error': f'无效的JSON格式: {str(e)}'}, 400, None
-
-
 def make_api_request(url, method='GET', data=None, stream=False, token_value=None):
-    """统一的API请求处理函数"""
+    """Handles interaction with the target API including streaming and non-streaming request/response patterns.
+    Supports forced non-streaming configuration override, automatically handles authentication and request parameters.
+    
+    Args:
+        url (str): Complete URL of the target API endpoint
+        method (str, optional): HTTP method ('GET', 'POST', etc.). Defaults to 'GET'
+        data (dict, optional): Request body data. Defaults to None
+        stream (bool, optional): Whether this is a streaming request. Defaults to False
+        token_value (str, optional): Bearer authentication token. Defaults to None
+
+    Returns:
+        tuple: Contains three elements:
+            - response_data: Parsed JSON dict (non-streaming) or raw response object (streaming)
+            - status_code: HTTP status code
+            - is_stream: Boolean indicating if response is streaming
+    """
+
     try:
-        # 使用传入的token值或默认值
-        token = token_value
+        logger.info("检测到客户端发送的 [%s] 请求", '流式' if stream else '非流式')
+        # Set API streaming request flag
+        if FORCE_NO_STREAM:  # If non-streaming is forced, ignore the original request's streaming flag
+            stream = False
+        logger.debug("API将向服务器发送 [%s] 请求", '流式' if stream else '非流式')
         
-        # 设置请求头
+        # Set request headers
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Authorization': f'Bearer {token}',
+            'Authorization': f'Bearer {token_value}',
             'Cookie': f'{COOKIE_VALUE}'
         }
         
-        # 准备请求参数
-        kwargs = {
-            'headers': headers,
-            'stream': stream
-        }
+        # Prepare request parameters
+        kwargs = {'headers': headers, 'stream': stream}
         if data:
-            # 添加请求数据的调试输出
-            logger.info(f"发送到目标API的token: {token}")
-            logger.info(f"发送到目标API的数据: {json.dumps(data, ensure_ascii=False)}")
+            data['stream'] = stream  # Ensure the server receives the same streaming flag as the API
             kwargs['json'] = data
-
-        # 发送请求
-        logger.info(f"{method} 请求到 {url}")
+        
+        # send request to the target API
+        logger.info("%s 请求到 %s", method, url)
+        logger.debug("JSON格式的完整发送请求: %s", json.dumps(kwargs, ensure_ascii=False, indent=2))
         response = requests.request(method, url, **kwargs)
-        logger.info(f"响应状态码: {response.status_code}")
-        logger.info(f"流式响应: {stream}")
+        logger.info("响应状态码: %d", response.status_code)
 
-        # 处理流式响应
-        if stream and response.status_code == 200:
-            return response, 200, {'Content-Type': 'text/event-stream'}
-
-        # 处理非200状态码
-        if response.status_code != 200:
-            return {'error': f'API请求失败，状态码: {response.status_code}'}, response.status_code
-
-        # 处理非流式响应的内容类型
-        content_type = response.headers.get('Content-Type', '')
-        if 'text/event-stream' in content_type and not stream:
-            return response.text, response.status_code, {'Content-Type': 'text/event-stream'}
-
-        # 处理响应内容
-        response_text = response.text.strip()
-        if not response_text:
-            return {'error': '服务器返回空响应'}, 500
-
-        # 添加非流式响应内容的调试输出
-        if not stream:
+        # Procede response handling based on status code
+        if response.status_code == 200:            
+            logger.debug("返回的完整响应: %s", response.text)            
+            
+            # Streaming response handling
+            if stream:
+                return response, 200, True          
+            # Non-streaming response handling
             try:
-                response_json = json.loads(response_text)
-                logger.info(f"收到响应: {json.dumps(response_json, ensure_ascii=False)[:1000]}...")
-            except:
-                logger.info(f"收到非JSON响应: {response_text[:1000]}...")
-
-        return json.loads(response_text), response.status_code
-
+                response_text = response.text.strip()
+                none_stream_json = json.loads(response_text)
+                return none_stream_json, 200, False
+            except json.JSONDecodeError:
+                logger.error("返回的响应数据未包含有效的JSON格式")
+                return {'error': '返回的响应数据未包含有效的JSON格式'}, 500, False
+        
+        # Procede responde处理非200状态码
+        logger.error("API请求失败，状态码: %d", response.status_code)
+        return {'error': f'API请求失败，状态码: {response.status_code}'}, response.status_code, False
+    
     except Exception as e:
         return handle_error(e)
 
+def generate_stream_response(response):
+    """Generator function to convert non-streaming response to streaming format
+    
+    Features:
+        - Converts complete response to streaming chunks
+        - Maintains OpenAI API compatibility
+        - Provides incremental content delivery
+        - Handles text content only
+        
+    Process:
+        1. Extracts complete content from response object
+        2. Builds content incrementally character by character
+        3. Calculates delta between current and previous content
+        4. Constructs OpenAI-compliant streaming format
+        5. Yields formatted response chunks
+    
+    Returns:
+        str: Streaming response chunk in format "data: {JSON}\n\n"
+    """
+    # Extract complete content from response object
+    content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+    
+    # Store previous content fragment for delta calculation
+    previous = ""
+    
+    # Incrementally build content character by character
+    for i in range(1, len(content) + 1):
+        # Get current length content fragment
+        current = content[:i]
+        
+        # Calculate new content portion
+        new_content = current[len(previous):]
+        
+        # Skip empty content
+        if not new_content:
+            continue
+            
+        # Construct OpenAI streaming format
+        chunk = {
+            "choices": [{
+                "delta": {
+                    "role": "assistant",
+                    "content": new_content
+                }
+            }]
+        }
+        
+        # Yield formatted response chunk and update previous content
+        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        previous = current
+
+    # Add a stop signal to indicate the end of streaming
+    yield "data: [DONE]\n\n"
+    
 
 def process_stream_response(response):
-    """处理流式响应，删除重复内容"""
+    """Processes a streaming HTTP response to remove duplicate content and reconstruct clean event stream data.
+    
+    Handles Server-Sent Events (SSE) format by:
+    - Detecting and removing duplicate content prefixes in consecutive chunks
+    - Skipping completely duplicate chunks
+    - Maintaining full response reconstruction for logging
+    - Preserving non-data lines in the stream
+    - Counting processed chunks for monitoring
+    
+    Args:
+        response (iterable): The HTTP response object that supports iter_lines(),
+                            typically from requests library or similar.
+                            
+    Yields:
+        str: Processed event stream chunks in format "data: {json}\n\n" or
+             passes through non-data lines unchanged.
+             
+    Behavior:
+        1. Processes only lines starting with 'data:'
+        2. For valid JSON data:
+           - Extracts and processes content from choices[0].delta.content
+           - Removes duplicate content from previous chunks
+           - Skips completely duplicate chunks
+           - Reconstructs clean event stream data
+        3. For invalid JSON: passes through original data
+        4. Logs:
+           - Complete reconstructed response at end
+           - Total chunks processed
+           - Stream completion
+    
+    Example:
+        >>> for chunk in process_stream_response(response):
+        ...     print(chunk)
+        data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n
+        data: {"choices": [{"delta": {"content": " world"}}]}\n\n
+    """
     previous_content = ""
+    previous_chunk = None
     full_response = ""
     chunk_count = 0  # 添加这个变量来计数处理的数据块
     
@@ -115,6 +188,10 @@ def process_stream_response(response):
             chunk_count += 1  # 增加计数器
             chunk_str = chunk.decode('utf-8')
             
+            # Skip if this is an exact duplicate of the previous chunk
+            if chunk_str == previous_chunk:
+                continue
+                
             # 只处理data字段的行
             if chunk_str.startswith('data:'):
                 try:
@@ -135,6 +212,7 @@ def process_stream_response(response):
                     
                     # 重新构建事件流数据
                     processed_chunk = f"data: {json.dumps(data_json)}\n\n"
+                    previous_chunk = chunk_str  # Store for duplicate checking
                     yield processed_chunk
                 except json.JSONDecodeError:
                     # 如果解析失败，直接传递原始数据
@@ -145,87 +223,149 @@ def process_stream_response(response):
     
     # 如果没有在流中检测到结束标志，在这里记录完整响应
     if full_response:
-        logger.info(f"Complete response: {full_response}")
+        logger.debug("Stream processing completed")        
+        logger.debug("Total chunks processed: %d", chunk_count)
+        logger.debug("Complete response: %s", full_response)        
     
-    logger.info(f"Total chunks processed: {chunk_count}")
-    logger.info("Stream processing completed")
+    # Add a stop signal to indicate the end of streaming
+    yield "data: [DONE]\n\n"
 
+def process_multimodal_content(content, token_value):
+    """处理多模态内容
+    
+    Args:
+        content: 要处理的内容，可以是字符串或列表格式
+        token_value: 认证令牌值
+    
+    Returns:
+        list: 格式化后的多模态内容列表
+    """
+    # 如果content是字符串，转换为列表格式
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    
+    # 如果不是列表或字典类型，返回空列表
+    if not isinstance(content, list):
+        return []
+    
+    formatted_content = []
+    for item in content:
+        if item.get('type') == 'text':
+            formatted_content.append({
+                'text': item.get('text', ''),
+                'type': 'text'
+            })
+        elif item.get('type') == 'image_url':
+            # 提取图片
+            image_data = item.get('image_url', '')
+            # 如果image是对象且包含url字段，提取url值
+            if isinstance(image_data, dict) and 'url' in image_data:
+                image_id = get_image_id_from_upload(upload_base64_image_to_qwenlm(image_data['url'], token_value))
+                formatted_content.append({
+                    'image': image_id,  # 提取url字段的值
+                    'type': 'image'
+                })
+        elif item.get('type') == 'image':
+            formatted_content.append({
+                'image': item.get('image', ''),
+                'type': 'image'
+            })
+    
+    return formatted_content
 
 def chat_completions_route(get_auth_token):
     """处理聊天完成请求的端点"""
     # 跳过 OPTIONS 请求的处理
     if request.method == 'OPTIONS':
         return '', 200
+   
+    # 验证请求数据格式
+    try:
+        request_data = request.get_json()
+        logger.debug("完整请求数据: %s", json.dumps(request_data, ensure_ascii=False, indent=2))
+        if not isinstance(request_data, dict):
+            return jsonify({'error': '请求JSON格式不正确，应为一个JSON对象'}), 400
+        
+        # 检查并格式化stream参数，只有严格为True或字符串'true'时才为True，其余及没有stream一律为False
+        # val = request_data.get('stream')
+        # if val is True or (isinstance(val, str) and val.lower() == 'true'):
+        #     request_data['stream'] = True
+        # else:
+        #     request_data['stream'] = False
+        #     logger.info("stream参数未显式为True，已设置为False")
     
-    # 验证请求
-    request_data, error_response, status_code, token_value = validate_request(request, get_auth_token)
-    if error_response:
-        return jsonify(error_response), status_code
+    except Exception as e:
+        return jsonify({'error': f'无效的JSON格式: {str(e)}'}), 400
+    
+    # 验证API key
+    authorization_header = request.headers.get('Authorization')
+    token_value, error_message, status_code = get_auth_token(authorization_header)
+    if error_message:
+        logger.error("认证失败: %s", error_message)
+        return jsonify(error_message), status_code
 
     try:
-        # 检查是否为流式请求
-        stream_mode = request_data.get('stream', False)
-        
         # 处理多模态消息格式
         if 'messages' in request_data:
             for message in request_data['messages']:
                 if 'content' in message:
-                    # 如果content是字符串，转换为列表格式
-                    if isinstance(message['content'], str):
-                        message['content'] = [{"type": "text", "text": message['content']}]
-                    # 确保列表格式符合通义千问API要求
-                    elif isinstance(message['content'], list):
-                        formatted_content = []
-                        for item in message['content']:
-                            if item.get('type') == 'text':
-                                formatted_content.append({
-                                    'text': item.get('text', ''),
-                                    'type': 'text'
-                                })
-                            elif item.get('type') == 'image_url':
-                                # 提取图片
-                                image_data = item.get('image_url', '')
-                                # 如果image是对象且包含url字段，提取url值
-                                if isinstance(image_data, dict) and 'url' in image_data:
-                                    image_id=get_image_id_from_upload(upload_base64_image_to_qwenlm(image_data['url'],token_value))
-                                    formatted_content.append({
-                                        'image': image_id,  # 提取url字段的值
-                                        'type': 'image'
-                                    })
-                            elif item.get('type') == 'image':
-                                formatted_content.append({
-                                    'image': item.get('image', ''),
-                                    'type': 'image'
-                                })
-                        message['content'] = formatted_content
+                    message['content'] = process_multimodal_content(message['content'], token_value)
         
-        if stream_mode:
-            # 流式请求处理
-            response, status, headers = make_api_request(
-                TARGET_API_URL, 
-                method='POST', 
-                data=request_data, 
-                stream=True,
-                token_value=token_value
-            )
-            if status != 200:
-                return jsonify(response), status
+        # 检查客户端请求格式，默认非流式请求
+        is_stream_request = request_data.get('stream', False)
+        
+        # 发送请求到目标API 
+        response, status_code, is_stream_response = make_api_request(
+            TARGET_API_URL, 
+            method='POST', 
+            data=request_data,
+            stream=is_stream_request, 
+            token_value=token_value
+        )
+        
+        if status_code != 200:
+            return jsonify(response), status_code
             
-            # 使用Flask的stream_with_context处理流式响应
+        # 客户端流式请求，使用Flask的stream_with_context处理流式响应
+        # 接收到非流式JSON格式响应
+        if is_stream_request:            
+            if not is_stream_response:
+                logger.warning("检测到对客户端流式请求的非流式响应 ❕")
+                logger.warning("生成伪流式响应 ❕")
+                logger.debug("生成的伪流式响应: %s", json.dumps(list(generate_stream_response(response)), ensure_ascii=False, indent=2))
+                return Response(
+                    stream_with_context(generate_stream_response(response)),
+                    status=200,
+                    mimetype='text/event-stream'
+                )
+            # 接收到流式响应
+            logger.info("检测到对客户端流式请求的流式响应 ✅")
             return Response(
                 stream_with_context(process_stream_response(response)),
                 status=200,
-                headers=headers
+                mimetype='text/event-stream'
             )
-        else:
-            # 非流式请求处理
-            response, status = make_api_request(
-                TARGET_API_URL, 
-                method='POST', 
-                data=request_data,
-                token_value=token_value
-            )
-            return jsonify(response), status
+        
+        # 客户端非流式请求
+        # 接收到非流式格式响应
+        if not is_stream_response:
+            logger.info("检测到对客户端非流式请求的非流式响应 ✅")
+            return jsonify(response), 200        
+        # 接收到流式响应 
+        # =====从程序逻辑上不应该发生，但如果发生了，转换为非流式响应====== 
+        logger.warning("检测到对客户端非流式请求的流式响应 ❕")
+        logger.warning("转换生成非流式响应 ❕")
+        last_line = response.strip().splitlines()[-1] # 截取最后一行转换为非流式响应
+        try:
+            data_json=json.loads(last_line[5:].strip()) # 去掉 'data:' 前缀并去除空格
+            content = data_json["choices"][0]["delta"].get("content", "")
+            response_json = {"choices": [{"message": {"role": "assistant", "content": content}}]}
+            logger.debug("转换流式响应为非流式响应: %s", json.dumps(response_json, ensure_ascii=False, indent=2))
+            return jsonify(response_json), 200
+        except json.JSONDecodeError:
+            logger.error("返回的响应数据不是有效的JSON格式")
+            return {'error': '返回的响应数据不是有效的JSON格式'},500
+
     except Exception as e:
         error_response, status_code = handle_error(e)
         return jsonify(error_response), status_code
@@ -234,7 +374,7 @@ def chat_completions_route(get_auth_token):
 def models_route():
     """获取可用模型列表的端点"""
     try:
-        response, status = make_api_request(MODELS_API_URL)
+        response, status, is_stream_response = make_api_request(MODELS_API_URL)
         return jsonify(response), status
     except Exception as e:
         error_response, status_code = handle_error(e)
@@ -303,8 +443,7 @@ def index_route():
         </style>
     </head>
     <body>
-        <h1>Qwen2Api</h1>
-        
+        <h1>Qwen2Api</h1>        
         <h2>API Endpoints</h2>
         <div class="endpoint">
             <span>Models:</span> <code>/v1/models</code> <br>

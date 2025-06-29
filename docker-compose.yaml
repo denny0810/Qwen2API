@@ -1,0 +1,13 @@
+services:
+  qwen2api:
+    container_name: qwen2api
+    image: <pull address>
+    restart: unless-stopped
+    network_mode: bridge
+    ports:
+      - "6060:6060"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./qwen2api/logs:/app/logs
+      - ./qwen2api/qwen2api.env:/app/qwen2api.env
