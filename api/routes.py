@@ -2,9 +2,12 @@ from flask import request, jsonify, Response, stream_with_context
 import json
 import logging
 import requests
+import time
+import re
 
 from utils import upload_base64_image_to_qwenlm, get_image_id_from_upload
-from config import TARGET_API_URL, MODELS_API_URL, COOKIE_VALUE, FORCE_NO_STREAM
+from config import TARGET_API_URL, MODELS_API_URL, COOKIE_VALUE, FORCE_NO_STREAM, PSEUDO_STREAM, LOG_LEVEL
+from dataclasses import dataclass
 # 获取日志记录器
 logger = logging.getLogger(__name__)
 
@@ -108,39 +111,196 @@ def generate_stream_response(response):
     # Extract complete content from response object
     content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
     
-    # Store previous content fragment for delta calculation
-    previous = ""
-    
-    # Incrementally build content character by character
-    for i in range(1, len(content) + 1):
-        # Get current length content fragment
-        current = content[:i]
-        
-        # Calculate new content portion
-        new_content = current[len(previous):]
-        
-        # Skip empty content
-        if not new_content:
-            continue
-            
-        # Construct OpenAI streaming format
+    # send out the content as one chunk
+    if not PSEUDO_STREAM:
         chunk = {
             "choices": [{
                 "delta": {
                     "role": "assistant",
-                    "content": new_content
+                    "content": content
                 }
             }]
         }
-        
-        # Yield formatted response chunk and update previous content
         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
-        previous = current
+    else:
+        # Store previous content fragment for delta calculation
+        # previous = ""
+        
+        # Incrementally build content character by character
+        # for i in range(1, len(content) + 1):
+        #     # Get current length content fragment
+        #     current = content[:i]
+            
+        #     # Calculate new content portion
+        #     new_content = current[len(previous):]
+            
+        #     # Skip empty content
+        #     if not new_content:
+        #         continue
+        content_blocks = split_mixed_content(content)
+        for block in content_blocks:
+            # Construct OpenAI streaming format
+            chunk = {
+                "choices": [{
+                    "delta": {
+                        "role": "assistant",
+                        "content": block['content']
+                    }
+                }]
+            }
+            
+            # Yield formatted response chunk and update previous content
+            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+            # previous = current
+            time.sleep(0.1)
 
     # Add a stop signal to indicate the end of streaming
     yield "data: [DONE]\n\n"
-    
 
+def split_mixed_content(content: str) -> list:
+    """
+    将混合内容(文本+公式+代码)拆分为适合伪流式输出的块
+    
+    参数:
+        content: 包含文本、公式和代码块的字符串
+        
+    返回:
+        块列表，每个块是一个字典:
+            type: 'text', 'formula' 或 'code'
+            content: 块内容
+    """
+    # 定义代码块模式 - 匹配Markdown风格的三反引号代码块
+    code_block_pattern = r'(```[\s\S]*?```)'
+    
+    # 定义公式模式 - 匹配常见公式分隔符
+    formula_pattern = r'(\$\$[\s\S]*?\$\$|\$.*?\$|\\\(.*?\\\)|\\\[.*?\\\])'
+    
+    # 第一步：先按代码块拆分
+    parts = re.split(code_block_pattern, content)
+    
+    blocks = []
+    
+    for part in parts:
+        if not part:
+            continue  # 跳过空部分
+            
+        # 检查是否为代码块
+        if part.startswith('```') and part.endswith('```'):
+            blocks.append({'type': 'code', 'content': part})
+            continue
+            
+        # 第二步：在非代码块部分中识别公式
+        sub_parts = re.split(formula_pattern, part)
+        
+        for sub_part in sub_parts:
+            if not sub_part:
+                continue
+                
+            # 检查是否为公式
+            if re.match(formula_pattern, sub_part):
+                blocks.append({'type': 'formula', 'content': sub_part})
+            else:
+                # 第三步：按句子拆分文本部分
+                # 句子结束符: 。.?!] 后跟空格或换行
+                sentences = re.split(r'([。.?!]\s+)', sub_part)
+                
+                buffer = ""
+                for i, seg in enumerate(sentences):
+                    if not seg:
+                        continue
+                        
+                    # 如果是句子结束符部分
+                    if i % 2 == 1:
+                        buffer += seg
+                        if buffer.strip():  # 避免添加空文本块
+                            blocks.append({'type': 'text', 'content': buffer})
+                        buffer = ""
+                    else:
+                        buffer = seg
+                
+                # 添加最后一个句子（如果没有结束符）
+                if buffer.strip():
+                    blocks.append({'type': 'text', 'content': buffer})
+    
+    return blocks    
+
+def process_stream_response(response):
+    @dataclass
+    class StreamState:
+        previous_content: str = ""
+        previous_chunk: str = None
+        full_response: str = ""
+        chunk_count: int = 0
+        done_signal_detected: bool = False
+
+    def _extract_content(data_json):
+        """从 SSE 数据中提取 content 字段"""
+        if not data_json.get('choices'):
+            return None
+        return data_json['choices'][0].get('delta', {}).get('content', '')
+
+    def _log_completion():
+        """在停止输出前记录日志"""
+        logger.warning(
+            "服务器%s返回停止位", 
+            '有' if state.done_signal_detected else '未'
+        )
+        # logger.info("Stream processing completed")
+        logger.info("流式响应的完整内容: %s",state.full_response)
+        logger.info(
+            "chunks: %d, response_length: %d", 
+            state.chunk_count, 
+            len(state.full_response)
+        )
+ 
+
+    state = StreamState()
+    for chunk in response.iter_lines():
+        if not chunk or not isinstance(chunk, bytes):
+            continue
+
+        try:
+            chunk_str = chunk.decode('utf-8').strip()
+        except UnicodeDecodeError:
+            logger.warning("块内容不是UTF-8编码：%s", chunk)
+            continue
+
+        state.chunk_count += 1
+        if chunk_str.replace(" ", "").lower() == "data:[done]":
+            state.done_signal_detected = True
+            _log_completion()  # 停止位触发时记录日志
+            yield "data: [DONE]\n\n"
+            continue
+
+        if chunk_str == state.previous_chunk:
+            continue
+
+        if chunk_str.startswith('data:'):
+            data_part = chunk_str[5:].strip()
+            try:
+                data_json = json.loads(data_part) if data_part else {}
+                if current_content := _extract_content(data_json):
+                    if (state.previous_content and 
+                        current_content.startswith(state.previous_content)):
+                        new_content = current_content[len(state.previous_content):]
+                        state.full_response += new_content
+                        data_json['choices'][0]['delta']['content'] = new_content
+                    else:
+                        state.full_response += current_content
+                    state.previous_content = current_content
+                yield f"data: {json.dumps(data_json)}\n\n"
+                state.previous_chunk = chunk_str
+            except json.JSONDecodeError:
+                yield f"{chunk_str}\n\n"
+        else:
+            yield f"{chunk_str}\n\n"
+
+    # 如果未显式检测到停止位，但已处理完所有数据，也记录日志
+    if state.full_response and not state.done_signal_detected:
+        _log_completion()
+        yield "data: [DONE]\n\n"
+
+'''原作者编写的流响应处理函数
 def process_stream_response(response):
     """Processes a streaming HTTP response to remove duplicate content and reconstruct clean event stream data.
     
@@ -225,10 +385,11 @@ def process_stream_response(response):
     if full_response:
         logger.debug("Stream processing completed")        
         logger.debug("Total chunks processed: %d", chunk_count)
-        logger.debug("Complete response: %s", full_response)        
-    
-    # Add a stop signal to indicate the end of streaming
-    yield "data: [DONE]\n\n"
+        logger.debug("Complete response: %s", full_response)
+        # Add a stop signal to indicate the end of streaming
+        yield "data: [DONE]\n\n"    
+'''
+
 
 def process_multimodal_content(content, token_value):
     """处理多模态内容
@@ -284,15 +445,7 @@ def chat_completions_route(get_auth_token):
         request_data = request.get_json()
         logger.debug("完整请求数据: %s", json.dumps(request_data, ensure_ascii=False, indent=2))
         if not isinstance(request_data, dict):
-            return jsonify({'error': '请求JSON格式不正确，应为一个JSON对象'}), 400
-        
-        # 检查并格式化stream参数，只有严格为True或字符串'true'时才为True，其余及没有stream一律为False
-        # val = request_data.get('stream')
-        # if val is True or (isinstance(val, str) and val.lower() == 'true'):
-        #     request_data['stream'] = True
-        # else:
-        #     request_data['stream'] = False
-        #     logger.info("stream参数未显式为True，已设置为False")
+            return jsonify({'error': '请求JSON格式不正确，应为一个JSON对象'}), 400   
     
     except Exception as e:
         return jsonify({'error': f'无效的JSON格式: {str(e)}'}), 400
@@ -327,12 +480,18 @@ def chat_completions_route(get_auth_token):
             return jsonify(response), status_code
             
         # 客户端流式请求，使用Flask的stream_with_context处理流式响应
-        # 接收到非流式JSON格式响应
+        # 接收到非流式JSON格式响应，转换为伪流式
         if is_stream_request:            
             if not is_stream_response:
                 logger.warning("检测到对客户端流式请求的非流式响应 ❕")
-                logger.warning("生成伪流式响应 ❕")
-                logger.debug("生成的伪流式响应: %s", json.dumps(list(generate_stream_response(response)), ensure_ascii=False, indent=2))
+                logger.info("将%s显示伪流式响应 ❕","流式" if PSEUDO_STREAM else "一次性")
+                if LOG_LEVEL == 'DEBUG':
+                    result = json.dumps(
+                        list(generate_stream_response(response)),
+                        ensure_ascii=False,
+                        indent=2
+                    )
+                    logger.debug("生成的伪流式响应:\n%s", result)
                 return Response(
                     stream_with_context(generate_stream_response(response)),
                     status=200,
@@ -340,8 +499,15 @@ def chat_completions_route(get_auth_token):
                 )
             # 接收到流式响应
             logger.info("检测到对客户端流式请求的流式响应 ✅")
+            if LOG_LEVEL == 'DEBUG':
+                result = json.dumps(
+                    list(process_stream_response(response)),
+                    ensure_ascii=False,
+                    indent=2
+                    )
+                logger.debug("转换流式响应为:\n%s", result)
             return Response(
-                stream_with_context(process_stream_response(response)),
+                 stream_with_context(process_stream_response(response)),
                 status=200,
                 mimetype='text/event-stream'
             )
@@ -350,6 +516,7 @@ def chat_completions_route(get_auth_token):
         # 接收到非流式格式响应
         if not is_stream_response:
             logger.info("检测到对客户端非流式请求的非流式响应 ✅")
+            logger.debug("转发非流式响应: %s", json.dumps(response, ensure_ascii=False, indent=2))
             return jsonify(response), 200        
         # 接收到流式响应 
         # =====从程序逻辑上不应该发生，但如果发生了，转换为非流式响应====== 
@@ -360,7 +527,7 @@ def chat_completions_route(get_auth_token):
             data_json=json.loads(last_line[5:].strip()) # 去掉 'data:' 前缀并去除空格
             content = data_json["choices"][0]["delta"].get("content", "")
             response_json = {"choices": [{"message": {"role": "assistant", "content": content}}]}
-            logger.debug("转换流式响应为非流式响应: %s", json.dumps(response_json, ensure_ascii=False, indent=2))
+            logger.debug("转换为非流式响应: %s", json.dumps(response_json, ensure_ascii=False, indent=2))
             return jsonify(response_json), 200
         except json.JSONDecodeError:
             logger.error("返回的响应数据不是有效的JSON格式")
